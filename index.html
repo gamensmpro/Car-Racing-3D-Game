@@ -1,1 +1,263 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Turbo Racing 3D</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#111;font-family:Arial;color:white}
+#hud{position:absolute;top:15px;left:15px;z-index:2;font-size:18px;text-shadow:0 2px 4px black}
+#message{position:absolute;inset:0;display:grid;place-content:center;text-align:center;background:#0009;z-index:4}
+button{border:0;border-radius:12px;padding:14px 22px;background:#ff3d24;color:white;font-weight:bold;font-size:17px}
+#controls{position:absolute;bottom:22px;width:100%;display:flex;justify-content:space-between;padding:0 25px;z-index:3}
+#controls button{width:75px;height:65px;background:#ffffff44;border:2px solid white;touch-action:none}
+#gas{background:#e83c25!important}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div>🏎️ TURBO RACING 3D</div>
+  <div>Score: <span id="score">0</span></div>
+  <div>Speed: <span id="speed">0</span> km/h</div>
+</div>
+<div id="message">
+  <h1>🏁 TURBO RACING</h1>
+  <p>Dodge traffic. Race for the highest score!</p>
+  <button id="start">START RACE</button>
+</div>
+<div id="controls">
+  <button id="left">◀</button>
+  <button id="gas">ACCELERATE</button>
+  <button id="right">▶</button>
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb,35,150);
+
+const camera = new THREE.PerspectiveCamera(
+  65,innerWidth/innerHeight,0.1,300
+);
+camera.position.set(0,6,11);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x555566,2));
+const sun = new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(-5,12,8);
+scene.add(sun);
+
+const mat=(color)=>new THREE.MeshStandardMaterial({color});
+
+const grass = new THREE.Mesh(
+  new THREE.PlaneGeometry(300,300),
+  mat(0x31833a)
+);
+grass.rotation.x=-Math.PI/2;
+grass.position.y=-0.12;
+scene.add(grass);
+
+const road = new THREE.Mesh(
+  new THREE.PlaneGeometry(11,300),
+  mat(0x303238)
+);
+road.rotation.x=-Math.PI/2;
+road.position.set(0,-0.05,-100);
+scene.add(road);
+
+const lines=[];
+for(let z=-220;z<15;z+=9){
+  const line=new THREE.Mesh(
+    new THREE.BoxGeometry(.13,.03,4),
+    mat(0xffffff)
+  );
+  line.position.set(0,.01,z);
+  scene.add(line);
+  lines.push(line);
+}
+
+function makeCar(color){
+  const car=new THREE.Group();
+  const body=new THREE.Mesh(
+    new THREE.BoxGeometry(1.5,.55,2.8),mat(color)
+  );
+  body.position.y=.65;
+  car.add(body);
+
+  const cabin=new THREE.Mesh(
+    new THREE.BoxGeometry(1.15,.65,1.35),
+    new THREE.MeshStandardMaterial({
+      color:0x152a3d,metalness:.5,roughness:.2
+    })
+  );
+  cabin.position.set(0,1.2,-.15);
+  car.add(cabin);
+
+  for(const x of [-.82,.82]){
+    for(const z of [-.85,.85]){
+      const wheel=new THREE.Mesh(
+        new THREE.CylinderGeometry(.34,.34,.2,16),
+        mat(0x111111)
+      );
+      wheel.rotation.z=Math.PI/2;
+      wheel.position.set(x,.4,z);
+      car.add(wheel);
+    }
+  }
+  return car;
+}
+
+const player=makeCar(0xff2525);
+player.position.set(0,0,4);
+scene.add(player);
+
+const traffic=[];
+const colors=[0x2266ff,0xffcc00,0xffffff,0x9933cc,0x11aa77];
+
+function spawnTraffic(){
+  const car=makeCar(colors[Math.floor(Math.random()*colors.length)]);
+  const lanes=[-3,0,3];
+  car.position.set(
+    lanes[Math.floor(Math.random()*3)],0,-100
+  );
+  scene.add(car);
+  traffic.push(car);
+}
+
+let running=false,score=0,speed=0,steer=0;
+let spawnTimer=0,last=0;
+const scoreEl=document.getElementById('score');
+const speedEl=document.getElementById('speed');
+const message=document.getElementById('message');
+
+function start(){
+  traffic.forEach(c=>scene.remove(c));
+  traffic.length=0;
+  player.position.x=0;
+  score=0;
+  speed=35;
+  spawnTimer=0;
+  running=true;
+  message.style.display='none';
+}
+
+document.getElementById('start').onclick=start;
+
+const keys={};
+window.addEventListener('keydown',e=>{
+  keys[e.key.toLowerCase()]=true;
+  if(e.key===' '&&!running)start();
+});
+window.addEventListener('keyup',e=>{
+  keys[e.key.toLowerCase()]=false;
+});
+
+function hold(id,key){
+  const el=document.getElementById(id);
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();keys[key]=true;
+  });
+  for(const ev of ['pointerup','pointerleave','pointercancel']){
+    el.addEventListener(ev,()=>keys[key]=false);
+  }
+}
+hold('left','a');
+hold('right','d');
+hold('gas','w');
+
+function endGame(){
+  running=false;
+  message.style.display='grid';
+  message.innerHTML=`
+    <h1>💥 RACE OVER!</h1>
+    <h2>Score: ${Math.floor(score)}</h2>
+    <button id="again">RACE AGAIN</button>`;
+  document.getElementById('again').onclick=start;
+}
+
+function update(dt){
+  if(!running)return;
+
+  if(keys['w']||keys['arrowup'])speed=Math.min(speed+35*dt,190);
+  else speed=Math.max(speed-8*dt,55);
+
+  if(keys['s']||keys['arrowdown'])speed=Math.max(30,speed-75*dt);
+
+  if(keys['a']||keys['arrowleft'])player.position.x-=7*dt;
+  if(keys['d']||keys['arrowright'])player.position.x+=7*dt;
+
+  player.position.x=THREE.MathUtils.clamp(
+    player.position.x,-4.2,4.2
+  );
+  player.rotation.z=THREE.MathUtils.clamp(
+    (player.position.x-player.position.x*0.9)*-.03+
+    ((keys['a']||keys['arrowleft'])?.12:0)-
+    ((keys['d']||keys['arrowright'])?.12:0),
+    -.2,.2
+  );
+
+  const movement=speed*dt*.32;
+  lines.forEach(line=>{
+    line.position.z+=movement;
+    if(line.position.z>12)line.position.z-=234;
+  });
+
+  spawnTimer-=dt;
+  if(spawnTimer<=0){
+    spawnTraffic();
+    spawnTimer=Math.max(.55,1.6-speed/250);
+  }
+
+  for(let i=traffic.length-1;i>=0;i--){
+    const car=traffic[i];
+    car.position.z+=movement;
+
+    if(Math.abs(car.position.z-player.position.z)<1.9 &&
+       Math.abs(car.position.x-player.position.x)<1.25){
+      endGame();
+      return;
+    }
+
+    if(car.position.z>15){
+      scene.remove(car);
+      traffic.splice(i,1);
+      score+=100;
+    }
+  }
+
+  score+=dt*speed*.5;
+  scoreEl.textContent=Math.floor(score);
+  speedEl.textContent=Math.floor(speed);
+
+  camera.position.x+=(player.position.x*.4-camera.position.x)*dt*3;
+  camera.lookAt(player.position.x*.3,1,-5);
+}
+
+function animate(t){
+  requestAnimationFrame(animate);
+  const dt=Math.min((t-last)/1000,.05)||0;
+  last=t;
+  update(dt);
+  renderer.render(scene,camera);
+}
+animate(0);
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+  </html>
+
